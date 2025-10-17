@@ -11,7 +11,7 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # В проде укажите ваш домен
+    allow_origins=["https://frontend-five-silk-24.vercel.app"],  # Твой Vercel URL
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
