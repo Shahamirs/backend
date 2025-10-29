@@ -26,9 +26,9 @@ class Profile(BaseModel):
     name: str
     surname: str
     blood_type: str
-    allergies: str
-    contraindications: str
-    contacts: list[dict]
+    allergies: str = ""
+    contraindications: str = ""
+    contacts: list[dict] = []  # По умолчанию пустой массив
     last_updated: str = datetime.now().isoformat()
 
 class User(BaseModel):
@@ -103,10 +103,19 @@ async def get_profile(profile_id: str):
             "blood_type": row[4],
             "allergies": row[5],
             "contraindications": row[6],
-            "contacts": eval(row[7]),
+            "contacts": eval(row[7]) if row[7] else [],
             "last_updated": row[8]
         }
-    raise HTTPException(status_code=404, detail="Profile not found")
+    return {
+        "id": profile_id,
+        "name": "Неизвестно",
+        "surname": "Неизвестно",
+        "blood_type": "Не указана",
+        "allergies": "Не указаны",
+        "contraindications": "Не указаны",
+        "contacts": [],
+        "last_updated": ""
+    }
 
 @app.post("/api/profile/{profile_id}")
 async def update_profile(profile_id: str, profile: Profile, current_user: dict = Depends(get_current_user)):
@@ -129,10 +138,19 @@ async def get_my_profile(current_user: dict = Depends(get_current_user)):
             "blood_type": row[4],
             "allergies": row[5],
             "contraindications": row[6],
-            "contacts": eval(row[7]),
+            "contacts": eval(row[7]) if row[7] else [],
             "last_updated": row[8]
         }
-    raise HTTPException(status_code=404, detail="Profile not found")
+    return {
+        "id": current_user["id"],
+        "name": "",
+        "surname": "",
+        "blood_type": "",
+        "allergies": "",
+        "contraindications": "",
+        "contacts": [],
+        "last_updated": ""
+    }
 
 if __name__ == "__main__":
     import uvicorn
