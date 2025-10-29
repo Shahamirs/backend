@@ -6,61 +6,56 @@ from datetime import datetime, timedelta
 from jose import JWTError, jwt
 from fastapi.middleware.cors import CORSMiddleware
 import secrets
+import os
 
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://frontend-five-silk-24.vercel.app"],  # Твой Vercel URL
+    allow_origins=["https://frontend-five-silk-24.vercel.app", "http://localhost:8080"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# JWT настройки
-SECRET_KEY = secrets.token_urlsafe(32)  # В проде храните в .env
+SECRET_KEY = secrets.token_urlsafe(32)
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
-# Модель профиля
 class Profile(BaseModel):
     name: str
     surname: str
     blood_type: str
     allergies: str
     contraindications: str
-    contacts: list[dict]  # [{"type": "phone", "value": "+123456789"}]
+    contacts: list[dict]
     last_updated: str = datetime.now().isoformat()
 
-# Модель пользователя
 class User(BaseModel):
     username: str
     password: str
 
-# Инициализация БД
-conn_profiles = sqlite3.connect('profiles.db')
-c_profiles = conn_profiles.cursor()
-c_profiles.execute('''CREATE TABLE IF NOT EXISTS profiles
-                     (id TEXT PRIMARY KEY, user_id TEXT, name TEXT, surname TEXT, blood_type TEXT, allergies TEXT, contraindications TEXT, contacts TEXT, last_updated TEXT)''')
-conn_profiles.commit()
-
+# БД
 conn_users = sqlite3.connect('users.db')
 c_users = conn_users.cursor()
 c_users.execute('''CREATE TABLE IF NOT EXISTS users
                   (id TEXT PRIMARY KEY, username TEXT UNIQUE, password TEXT)''')
 conn_users.commit()
 
-# OAuth2
+conn_profiles = sqlite3.connect('profiles.db')
+c_profiles = conn_profiles.cursor()
+c_profiles.execute('''CREATE TABLE IF NOT EXISTS profiles
+                     (id TEXT PRIMARY KEY, user_id TEXT, name TEXT, surname TEXT, blood_type TEXT, allergies TEXT, contraindications TEXT, contacts TEXT, last_updated TEXT)''')
+conn_profiles.commit()
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-# Создание JWT токена
 def create_access_token(data: dict):
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-# Проверка токена
 async def get_current_user(token: str = Depends(oauth2_scheme)):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -75,7 +70,6 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-# Регистрация
 @app.post("/register")
 async def register(user: User):
     user_id = secrets.token_urlsafe(16)
@@ -83,11 +77,10 @@ async def register(user: User):
     if c_users.fetchone():
         raise HTTPException(status_code=400, detail="Username already exists")
     c_users.execute("INSERT INTO users (id, username, password) VALUES (?, ?, ?)",
-                    (user_id, user.username, user.password))  # В проде хешируйте пароль
+                    (user_id, user.username, user.password))
     conn_users.commit()
-    return {"message": "User registered"}
+    return {"message": "User registered", "user_id": user_id}
 
-# Вход
 @app.post("/token")
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     c_users.execute("SELECT id, username FROM users WHERE username=? AND password=?",
@@ -98,7 +91,6 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     access_token = create_access_token(data={"sub": user[1]})
     return {"access_token": access_token, "token_type": "bearer", "user_id": user[0]}
 
-# Получить профиль
 @app.get("/api/profile/{profile_id}")
 async def get_profile(profile_id: str):
     c_profiles.execute("SELECT * FROM profiles WHERE id=?", (profile_id,))
@@ -116,7 +108,6 @@ async def get_profile(profile_id: str):
         }
     raise HTTPException(status_code=404, detail="Profile not found")
 
-# Создать/обновить профиль
 @app.post("/api/profile/{profile_id}")
 async def update_profile(profile_id: str, profile: Profile, current_user: dict = Depends(get_current_user)):
     contacts_str = str(profile.contacts)
@@ -126,7 +117,6 @@ async def update_profile(profile_id: str, profile: Profile, current_user: dict =
     conn_profiles.commit()
     return {"message": "Profile updated"}
 
-# Получить профиль пользователя
 @app.get("/api/my-profile")
 async def get_my_profile(current_user: dict = Depends(get_current_user)):
     c_profiles.execute("SELECT * FROM profiles WHERE user_id=?", (current_user["id"],))
@@ -145,4 +135,5 @@ async def get_my_profile(current_user: dict = Depends(get_current_user)):
     raise HTTPException(status_code=404, detail="Profile not found")
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=10000)
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
